@@ -1,4 +1,5 @@
 {
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "exampleproject",
   "version-string": "1.0.0",
   "description": "An example project built using CommonLibSSE",
@@ -7,8 +8,12 @@
   "dependencies": [
     "boost-atomic",
     "boost-stl-interfaces",
-	"simpleini",
+    "simpleini",
     "span-lite",
-    "spdlog"
+    "spdlog",
+    "directxmath",
+    "directxtk",
+    "rapidcsv",
+    "catch2"
   ]
 }

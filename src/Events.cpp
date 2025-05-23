@@ -17,7 +17,34 @@ namespace Events
 		kLeftForward = 8
 	};
 
-	InputEventHandler* InputEventHandler::GetSingleton()
+	std::string_view menus[] = {
+		RE::BarterMenu::MENU_NAME,
+		RE::BookMenu::MENU_NAME,
+		RE::Console::MENU_NAME,
+		RE::ContainerMenu::MENU_NAME,
+		RE::CraftingMenu::MENU_NAME,
+		RE::CreationClubMenu::MENU_NAME,
+		RE::DialogueMenu::MENU_NAME,
+		RE::FavoritesMenu::MENU_NAME,
+		RE::GiftMenu::MENU_NAME,
+		RE::InventoryMenu::MENU_NAME,
+		RE::JournalMenu::MENU_NAME,
+		RE::LevelUpMenu::MENU_NAME,
+		RE::LockpickingMenu::MENU_NAME,
+		RE::MagicMenu::MENU_NAME,
+		RE::MapMenu::MENU_NAME,
+		RE::MessageBoxMenu::MENU_NAME,
+		RE::ModManagerMenu::MENU_NAME,
+		RE::RaceSexMenu::MENU_NAME,
+		RE::SleepWaitMenu::MENU_NAME,
+		RE::StatsMenu::MENU_NAME,
+		RE::TrainingMenu::MENU_NAME,
+		RE::TutorialMenu::MENU_NAME,
+		RE::TweenMenu::MENU_NAME,
+	};
+
+	InputEventHandler*
+		InputEventHandler::GetSingleton()
 	{
 		static InputEventHandler singleton;
 		return std::addressof(singleton);
@@ -62,14 +89,24 @@ namespace Events
 				continue;
 			}
 
-			if (key == Settings::uDodgeKey )
-				{
+			if (key == Settings::uDodgeKey) {
 				Dodge();
 				break;
 			}
 		}
 
 		return EventResult::kContinue;
+	}
+
+	bool IsAnyMenuOpen()
+	{
+		auto ui = RE::UI::GetSingleton();
+		for (const std::string_view& menu : menus) {
+			if (ui->IsMenuOpen(menu)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	void Dodge()
@@ -80,104 +117,109 @@ namespace Events
 		auto ui = RE::UI::GetSingleton();
 		auto controlMap = RE::ControlMap::GetSingleton();
 
-		if (ui->GameIsPaused() || !controlMap->IsMovementControlsEnabled() || !controlMap->IsLookingControlsEnabled() || ui->IsMenuOpen("Dialogue Menu") 
-			|| playerCharacter->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal || playerCharacter->GetActorValue(RE::ActorValue::kStamina) <= 0) {
-			return;
-		}
-		
-		if (!playerCharacter || !playerControls)
-		{
+		if (!playerCharacter || !playerControls) {
 			return;
 		}
 
-		RE::BShkbAnimationGraph* animationGraph = nullptr;
-		RE::BSTSmartPointer<RE::BSAnimationGraphManager> animationGraphManagerPtr;
-		if (playerCharacter->GetAnimationGraphManager(animationGraphManagerPtr)) {
-			animationGraph = animationGraphManagerPtr->graphs[animationGraphManagerPtr->activeGraph].get();
+		if (
+			ui->GameIsPaused() ||
+			!controlMap->IsMovementControlsEnabled() ||
+			!controlMap->IsLookingControlsEnabled() ||
+			IsAnyMenuOpen() ||
+			playerCharacter->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal ||
+			playerCharacter->GetActorBase()->GetActorValue(RE::ActorValue::kStamina) <= 0) {
+			return;
 		}
 
-		if (!animationGraph)
-		{
+		if (Settings::dodgePerk != nullptr && !playerCharacter->HasPerk(Settings::dodgePerk)) {
+			logger::info("Player doesn't have required perk aborting dodge");
+			return;
+		}
+
+		auto currentStamina = playerCharacter->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStamina);
+
+		if (Settings::uStaminaConsumption > 0 && currentStamina < Settings::uStaminaConsumption) {
+			logger::info("Not enough stamina for dodge, currentStamina {}, required {}", currentStamina, Settings::uStaminaConsumption);
+			if (trueHudApi != nullptr) {
+				trueHudApi->FlashActorValue(playerCharacter->GetHandle(), RE::ActorValue::kStamina, true);
+			}
 			return;
 		}
 
 		auto normalizedInputDirection = Vec2Normalize(playerControls->data.prevMoveVec);
-		if (normalizedInputDirection.x == 0.f && normalizedInputDirection.y == 0.f)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", PI);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kNeutral);
+		bool didDodge = false;
+		if (normalizedInputDirection.x == 0.f && normalizedInputDirection.y == 0.f) {
+			playerCharacter->SetGraphVariableFloat("Dodge_Angle", PI);
+			playerCharacter->SetGraphVariableInt("Dodge_Direction", kNeutral);
 			playerCharacter->NotifyAnimationGraph("Dodge_N");
 			playerCharacter->NotifyAnimationGraph("Dodge");
 			logger::debug("neutral");
-			return;
+			didDodge = true;
+		} else {
+			RE::NiPoint2 forwardVector(0.f, 1.f);
+			float dodgeAngle = GetAngle(normalizedInputDirection, forwardVector);
+
+			if (dodgeAngle >= -PI8 && dodgeAngle < PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kForward);
+				playerCharacter->NotifyAnimationGraph("Dodge_F");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("forward");
+			} else if (dodgeAngle >= PI8 && dodgeAngle < 3 * PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kRightForward);
+				playerCharacter->NotifyAnimationGraph("Dodge_RF");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("right-forward");
+			} else if (dodgeAngle >= 3 * PI8 && dodgeAngle < 5 * PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kRight);
+				playerCharacter->NotifyAnimationGraph("Dodge_R");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("right");
+			} else if (dodgeAngle >= 5 * PI8 && dodgeAngle < 7 * PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kRightBackward);
+				playerCharacter->NotifyAnimationGraph("Dodge_RB");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("right-backward");
+			} else if (dodgeAngle >= 7 * PI8 || dodgeAngle < 7 * -PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kBackward);
+				playerCharacter->NotifyAnimationGraph("Dodge_B");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("backward");
+			} else if (dodgeAngle >= 7 * -PI8 && dodgeAngle < 5 * -PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kLeftBackward);
+				playerCharacter->NotifyAnimationGraph("Dodge_LB");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("left-backward");
+			} else if (dodgeAngle >= 5 * -PI8 && dodgeAngle < 3 * -PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kLeft);
+				playerCharacter->NotifyAnimationGraph("Dodge_L");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("left");
+			} else if (dodgeAngle >= 3 * -PI8 && dodgeAngle < -PI8) {
+				playerCharacter->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
+				playerCharacter->SetGraphVariableInt("Dodge_Direction", kLeftForward);
+				playerCharacter->NotifyAnimationGraph("Dodge_LF");
+				playerCharacter->NotifyAnimationGraph("Dodge");
+				didDodge = true;
+				logger::debug("left-forward");
+			}
 		}
 
-		RE::NiPoint2 forwardVector(0.f, 1.f);
-		float dodgeAngle = GetAngle(normalizedInputDirection, forwardVector);
-
-		if (dodgeAngle >= -PI8 && dodgeAngle < PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kForward);
-			playerCharacter->NotifyAnimationGraph("Dodge_F");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("forward");
-		}
-		else if (dodgeAngle >= PI8 && dodgeAngle < 3 * PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kRightForward);
-			playerCharacter->NotifyAnimationGraph("Dodge_RF");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("right-forward");
-		}
-		else if (dodgeAngle >= 3 * PI8 && dodgeAngle < 5 * PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kRight);
-			playerCharacter->NotifyAnimationGraph("Dodge_R");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("right");
-		}
-		else if (dodgeAngle >= 5 * PI8 && dodgeAngle < 7 * PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kRightBackward);
-			playerCharacter->NotifyAnimationGraph("Dodge_RB");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("right-backward");
-		}
-		else if (dodgeAngle >= 7 * PI8 || dodgeAngle < 7 * -PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kBackward);
-			playerCharacter->NotifyAnimationGraph("Dodge_B");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("backward");
-		}
-		else if (dodgeAngle >= 7 * -PI8 && dodgeAngle < 5 * -PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kLeftBackward);
-			playerCharacter->NotifyAnimationGraph("Dodge_LB");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("left-backward");
-		}
-		else if (dodgeAngle >= 5 * -PI8 && dodgeAngle < 3 * -PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kLeft);
-			playerCharacter->NotifyAnimationGraph("Dodge_L");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("left");
-		}
-		else if (dodgeAngle >= 3 * -PI8 && dodgeAngle < -PI8)
-		{
-			animationGraph->SetGraphVariableFloat("Dodge_Angle", dodgeAngle);
-			animationGraph->SetGraphVariableInt("Dodge_Direction", kLeftForward);
-			playerCharacter->NotifyAnimationGraph("Dodge_LF");
-			playerCharacter->NotifyAnimationGraph("Dodge");
-			logger::debug("left-forward");
+		if (Settings::uStaminaConsumption > 0 && didDodge) {
+			playerCharacter->AsActorValueOwner()->RestoreActorValue(RE::ACTOR_VALUE_MODIFIER::kDamage, RE::ActorValue::kStamina, -(float)Settings::uStaminaConsumption);
 		}
 	}
 

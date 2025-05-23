@@ -1,4 +1,5 @@
 #pragma once
+#include "TrueHUDAPI.h"
 
 namespace Events
 {
@@ -7,9 +8,9 @@ namespace Events
 	public:
 		using EventResult = RE::BSEventNotifyControl;
 
-		static InputEventHandler*	GetSingleton();
+		static InputEventHandler* GetSingleton();
 
-		virtual EventResult			ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_eventSource) override;
+		virtual EventResult ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>* a_eventSource) override;
 
 	private:
 		enum : uint32_t
@@ -35,3 +36,5 @@ namespace Events
 
 	void Dodge();
 }
+
+extern TRUEHUD_API::IVTrueHUD1* trueHudApi;
