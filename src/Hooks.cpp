@@ -27,44 +27,19 @@ namespace Hooks
 			auto userEvents = RE::UserEvents::GetSingleton();
 
 			if (userEvent == userEvents->sprint) {
-				if (a_event->IsDown() && playerCharacter->playerFlags.isSprinting) {  // stopping sprint
-					bStoppingSprint = true;
-				} else if (a_event->HeldDuration() < Settings::fSprintHoldDuration) {
-					if (a_event->IsUp()) {
-						Events::Dodge();
-						bStoppingSprint = false;
-					}
-					return;
-				} else if (playerCharacter && playerCharacter->playerFlags.isSprinting && !bStoppingSprint) {
-					a_event->heldDownSecs = 0.f;
-				} else if (a_event->IsUp()) {
+				// 1) short-tap → dodge
+				if (a_event->IsUp() && a_event->HeldDuration() < Settings::fSprintHoldDuration) {
+					Events::Dodge();
 					bStoppingSprint = false;
+					return;  // eat the Up so vanilla doesn’t toggle sprint
+				}
+
+				// 2) keep vanilla sprint alive but don’t let HeldDuration grow while sprinting
+				if (playerCharacter->playerFlags.isSprinting && !bStoppingSprint) {
+					a_event->heldDownSecs = 0.f;  // optional – see note below
 				}
 			}
 		}
-
-		/*if (Settings::bUseSprintButton) {
-			auto playerCharacter = RE::PlayerCharacter::GetSingleton();
-			auto userEvent = a_event->QUserEvent();
-			auto userEvents = RE::UserEvents::GetSingleton();
-
-			if (userEvent == userEvents->sprint) {
-				if (a_event->HeldDuration() < Settings::fSprintHoldDuration) {
-					if (a_event->IsUp()) {
-						Events::Dodge();
-						heldDownTimeOffset = 0.f;
-					}
-					return;
-				} else if (a_event->IsUp()) {
-					heldDownTimeOffset = 0.f;
-				} else {
-					if (heldDownTimeOffset == 0.f) {
-						heldDownTimeOffset = a_event->HeldDuration();
-					}
-					a_event->heldDownSecs -= heldDownTimeOffset;
-				}
-			}
-		}*/
 
 		_ProcessButton(a_this, a_event, a_data);
 	}
