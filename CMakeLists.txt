@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.21)
 
 # ---- Options ----
 
@@ -79,6 +79,8 @@ set(Boost_USE_STATIC_LIBS ON)
 
 # ---- Dependencies ----
 
+set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory("extern/CommonLibSSE" CommonLibSSE)
 
 find_package(spdlog REQUIRED CONFIG)
@@ -135,6 +137,7 @@ target_include_directories(
 	${PROJECT_NAME}
 	PRIVATE
 		${CMAKE_CURRENT_BINARY_DIR}/include
+		${CMAKE_CURRENT_SOURCE_DIR}/include
 		${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
